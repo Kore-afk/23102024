@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapa con Ruta Más Corta</title>
+  
+  <!-- Incluye los estilos de Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <!-- Incluye iconos desde FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+
+  <style>
+    #map {
+      height: 600px;
+      width: 100%;
+    }
+
+    #floating-menu {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background-color: rgba(255, 255, 255, 0.9);
+      border: 1px solid #ccc;
+      padding: 10px;
+      border-radius: 12px;
+      box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.1);
+      z-index: 1000;
+      max-height: 300px;
+      overflow-y: auto;
+      font-size: 14px;
+      width: 200px;
+    }
+
+    #floating-menu h1 {
+      font-size: 18px;
+      margin-bottom: 10px;
+      text-align: left;
+    }
+
+    #floating-menu div {
+      margin-bottom: 5px;
+      text-align: left;
+    }
+
+    .button-group {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .button-group button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      padding: 5px 10px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background-color 0.3s ease;
+      display: flex;
+      align-items: center;
+    }
+
+    .button-group button:hover {
+      background-color: #0056b3;
+    }
+
+    .button-group button i {
+      margin-right: 5px;
+    }
+
+    body {
+      font-family: 'Arial', sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+
+  </style>
+</head>
+<body>
+  <div id="floating-menu">
+    <h1>Puntos</h1>
+    <div id="coordinates-list">No hay puntos aún</div>
+    <div class="button-group">
+      <button id="close-shape">
+        <i class="fas fa-draw-polygon"></i>Cerrar Figura
+      </button>
+      <button id="clear-map">
+        <i class="fas fa-trash-alt"></i>Borrar
+      </button>
+    </div>
+    <button id="find-route" style="margin-top: 10px;">
+      <i class="fas fa-route"></i> Encontrar Ruta
+    </button>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- Incluye el script de Leaflet -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <script>
+    // Inicializa el mapa
+    var map = L.map('map').setView([20, 0], 2); // Coordenadas centrales del mapa y nivel de zoom
+
+    // Capa de mapa de OpenStreetMap
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    // Elemento donde mostraremos los puntos
+    var coordinatesListDiv = document.getElementById('coordinates-list');
+
+    // Array para almacenar los puntos
+    var points = [];
+
+    // Array para los marcadores
+    var markers = [];
+
+    // Variable para el polígono
+    var polygon = null;
+
+    // Variable para la ruta
+    var routeLayer = null;
+
+    // API Key de OpenRouteService (regístrate en https://openrouteservice.org/ para obtener una API Key)
+    var apiKey = 'TU_API_KEY';
+
+    // Evento para añadir un punto y actualizar el polígono
+    map.on('click', function(e) {
+      // Añade el nuevo punto
+      var newPoint = [e.latlng.lat, e.latlng.lng];
+      points.push(newPoint);
+
+      // Añade un marcador en el punto
+      var marker = L.marker(newPoint).addTo(map);
+      markers.push(marker);
+
+      // Llama a la API de Nominatim para obtener el nombre de la ubicación
+      fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${newPoint[0]}&lon=${newPoint[1]}`)
+        .then(response => response.json())
+        .then(data => {
+          var locationName = data.display_name || 'Ubicación desconocida';
+
+          // Agregar punto al menú flotante
+          var pointInfo = `Lat: ${newPoint[0].toFixed(6)}, Lng: ${newPoint[1].toFixed(6)}<br><strong>${locationName}</strong>`;
+          var pointElement = document.createElement('div');
+          pointElement.innerHTML = pointInfo;
+          coordinatesListDiv.appendChild(pointElement);
+
+        }).catch(error => {
+          console.log("Error al obtener la ubicación: ", error);
+        });
+
+      // Si ya existe un polígono, actualiza los puntos del polígono
+      if (polygon) {
+        polygon.setLatLngs(points);
+      }
+
+      if (points.length === 1) {
+        coordinatesListDiv.innerHTML = ''; // Limpiar el texto inicial cuando se añade el primer punto
+      }
+    });
+
+    // Botón para cerrar la figura
+    document.getElementById('close-shape').addEventListener('click', function() {
+      if (points.length > 2) {
+        // Si ya existe un polígono, lo removemos
+        if (polygon) {
+          map.removeLayer(polygon);
+        }
+
+        // Crear un polígono y agregarlo al mapa
+        polygon = L.polygon(points, {color: 'blue', fillColor: '#3388ff', fillOpacity: 0.5}).addTo(map);
+      } else {
+        alert("Necesitas al menos 3 puntos para cerrar una figura.");
+      }
+    });
+
+    // Botón para borrar puntos y el polígono
+    document.getElementById('clear-map').addEventListener('click', function() {
+      // Eliminar todos los marcadores
+      markers.forEach(function(marker) {
+        map.removeLayer(marker);
+      });
+      markers = [];
+
+      // Eliminar el polígono si existe
+      if (polygon) {
+        map.removeLayer(polygon);
+        polygon = null;
+      }
+
+      // Eliminar la ruta si existe
+      if (routeLayer) {
+        map.removeLayer(routeLayer);
+        routeLayer = null;
+      }
+
+      // Vaciar el array de puntos
+      points = [];
+
+      // Limpiar el menú de puntos
+      coordinatesListDiv.innerHTML = 'No hay puntos aún';
+    });
+
+    // Función para encontrar la ruta más corta
+    document.getElementById('find-route').addEventListener('click', function() {
+      if (points.length >= 2) {
+        var startPoint = points[points.length - 2];
+        var endPoint = points[points.length - 1];
+
+        // Llamar a la API de OpenRouteService para obtener la ruta
+        fetch(`https://api.openrouteservice.org/v2/directions/driving-car?api_key=${apiKey}&start=${startPoint[1]},${startPoint[0]}&end=${endPoint[1]},${endPoint[0]}`)
+          .then(response => response.json())
+          .then(data => {
+            if (routeLayer) {
+              map.removeLayer(routeLayer);
+            }
+
+            // Extraer la ruta en formato de coordenadas geoJSON
+            var routeCoordinates = data.routes[0].geometry.coordinates.map(coord => [coord[1], coord[0]]);
+
+            // Dibujar la ruta en el mapa
+            routeLayer = L.polyline(routeCoordinates, {color: 'green', weight: 4}).addTo(map);
+            map.fitBounds(routeLayer.getBounds()); // Ajustar el mapa a la ruta
+          })
+          .catch(error => {
+            console.error("Error al obtener la ruta: ", error);
+          });
+      } else {
+        alert("Selecciona al menos 2 puntos para calcular la ruta.");
+      }
+    });
+  </script>
+</body>
+</html>
